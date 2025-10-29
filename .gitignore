@@ -1,0 +1,8 @@
+# ide files
+.idea
+.claude
+CLAUDE.md
+
+# env
+.env
+node_modules

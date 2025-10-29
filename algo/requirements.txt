@@ -1,0 +1,12 @@
+# MechGen Gaussian Splatting Algorithm Dependencies
+# Placeholder requirements - update when implementing actual compression
+
+# Core dependencies
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# For future Gaussian splatting implementation
+# Uncomment and add specific versions when implementing:
+# torch>=2.0.0
+# gsplat
+# or other Gaussian splatting libraries
