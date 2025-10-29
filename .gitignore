@@ -6,3 +6,5 @@ CLAUDE.md
 # env
 .env
 node_modules
+bun.lock
+backend/public

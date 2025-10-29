@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { writeFile, mkdir } from 'fs/promises';
+import { mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
@@ -15,7 +15,7 @@ import {
  */
 async function downloadDatasetFrames(
   huggingfaceId: string,
-  outputDir: string
+  _outputDir: string
 ): Promise<{ frames: string[]; totalFrames: number; metadata: any }> {
   // TODO: Implement actual HuggingFace Hub API integration
   // For now, return empty/mock data
@@ -39,7 +39,7 @@ async function downloadDatasetFrames(
  * Run Python compression algorithm on frames
  */
 async function runCompressionAlgorithm(
-  framesDir: string,
+  _framesDir: string,
   framePaths: string[]
 ): Promise<any> {
   return new Promise((resolve, reject) => {

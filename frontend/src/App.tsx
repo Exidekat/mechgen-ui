@@ -28,7 +28,6 @@ function HomePage() {
 // Job status page
 function JobPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
 
   if (!id) {
     return (
