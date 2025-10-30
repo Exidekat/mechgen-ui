@@ -1,4 +1,3 @@
-import { spawn } from 'child_process';
 import { mkdir } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -20,7 +19,7 @@ async function downloadDatasetFrames(
   // TODO: Implement actual HuggingFace Hub API integration
   // For now, return empty/mock data
 
-  console.log(`Downloading dataset: ${huggingfaceId}`);
+  console.log(`[STUB] Downloading dataset: ${huggingfaceId}`);
 
   // Placeholder: In real implementation, use @huggingface/hub or REST API
   // to fetch dataset files and metadata
@@ -36,74 +35,53 @@ async function downloadDatasetFrames(
 }
 
 /**
- * Run Python compression algorithm on frames
+ * STUB: Mock compression algorithm
+ * This replaces the Python subprocess version that doesn't work in Vercel
+ *
+ * TODO Phase 2: Replace with external compute service (Modal/Railway)
  */
 async function runCompressionAlgorithm(
   _framesDir: string,
   framePaths: string[]
 ): Promise<any> {
-  return new Promise((resolve, reject) => {
-    // Prepare input JSON for Python script
-    const inputData = {
-      frames: framePaths.map((path, index) => ({
-        path,
-        index
-      }))
-    };
+  console.log(`[STUB] Compressing ${framePaths.length} frames (mock)`);
 
-    // Path to Python script
-    const pythonScript = join(process.cwd(), 'algo', 'main.py');
+  // Simulate processing delay
+  await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Determine Python executable
-    // Try to use ltx conda environment first (per user's global instructions)
-    const pythonExe = process.env.PYTHON_PATH || 'python3';
+  // Return mock compression results
+  const results = framePaths.map((_path, index) => ({
+    frame_index: index,
+    status: 'success',
+    original_size: 100000 + Math.floor(Math.random() * 50000), // Mock size
+    compressed_size: 10000 + Math.floor(Math.random() * 5000), // Mock compressed size
+    compression_ratio: 10.0,
+    gaussian_latent: null, // No actual compression in stub
+    metadata: {
+      algorithm: 'stub_placeholder',
+      version: '0.1.0',
+      note: 'This is a stub - no actual compression performed. Waiting for Phase 2 external compute service.'
+    }
+  }));
 
-    console.log(`Spawning Python process: ${pythonExe} ${pythonScript}`);
-
-    // Spawn Python process
-    const pythonProcess = spawn(pythonExe, [pythonScript], {
-      cwd: process.cwd(),
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    pythonProcess.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    pythonProcess.stderr.on('data', (data) => {
-      stderr += data.toString();
-      console.error('Python stderr:', data.toString());
-    });
-
-    pythonProcess.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`Python process exited with code ${code}: ${stderr}`));
-      } else {
-        try {
-          const result = JSON.parse(stdout);
-          resolve(result);
-        } catch (error) {
-          reject(new Error(`Failed to parse Python output: ${error}`));
-        }
-      }
-    });
-
-    pythonProcess.on('error', (error) => {
-      reject(new Error(`Failed to spawn Python process: ${error.message}`));
-    });
-
-    // Write input data to stdin
-    pythonProcess.stdin.write(JSON.stringify(inputData));
-    pythonProcess.stdin.end();
-  });
+  return {
+    status: 'completed',
+    total_frames: framePaths.length,
+    results,
+    metadata: {
+      algorithm: 'gaussian_splatting_stub',
+      version: '0.1.0',
+      note: 'Stub implementation - replace with external compute service'
+    }
+  };
 }
 
 /**
  * Main processing function for dataset compression
  * This runs asynchronously after job creation
+ *
+ * CURRENT: Stub implementation for Vercel compatibility
+ * TODO Phase 2: Move to external compute service (Modal/Railway)
  */
 export async function processDataset(
   jobId: number,
@@ -111,17 +89,17 @@ export async function processDataset(
   huggingfaceId: string
 ): Promise<void> {
   try {
-    console.log(`Starting processing for job ${jobId}, dataset ${datasetId}`);
+    console.log(`[STUB] Starting processing for job ${jobId}, dataset ${datasetId}`);
 
     // Update job to processing status
-    await updateJobStatus(jobId, 'processing', 0, 'Initializing');
+    await updateJobStatus(jobId, 'processing', 0, 'Initializing (stub mode)');
 
     // Create temporary directory for this job
     const jobDir = join(tmpdir(), `mechgen-job-${jobId}`);
     await mkdir(jobDir, { recursive: true });
 
-    // Step 1: Download dataset from HuggingFace
-    await updateJobProgress(jobId, 10, 'Downloading dataset from HuggingFace');
+    // Step 1: Download dataset from HuggingFace (stub)
+    await updateJobProgress(jobId, 10, 'Downloading dataset from HuggingFace (stub)');
     const { frames, totalFrames, metadata } = await downloadDatasetFrames(
       huggingfaceId,
       jobDir
@@ -134,44 +112,74 @@ export async function processDataset(
     });
 
     if (frames.length === 0) {
-      // Placeholder: No actual frames downloaded
-      console.log(`No frames to process for job ${jobId} (placeholder mode)`);
-      await updateJobStatus(
-        jobId,
-        'completed',
-        100,
-        'Completed (placeholder - no frames processed)'
-      );
-      return;
-    }
+      // No frames to process - create mock data for testing
+      console.log(`[STUB] No frames downloaded, creating mock compression data for job ${jobId}`);
 
-    // Step 2: Run compression algorithm
-    await updateJobProgress(jobId, 30, 'Running Gaussian splatting compression');
-    const compressionResult = await runCompressionAlgorithm(jobDir, frames);
+      // Create 3 mock frames for demonstration
+      const mockFramePaths = [
+        '/tmp/mock_frame_0.jpg',
+        '/tmp/mock_frame_1.jpg',
+        '/tmp/mock_frame_2.jpg'
+      ];
 
-    // Step 3: Save compressed outputs to database
-    await updateJobProgress(jobId, 70, 'Saving compressed outputs');
+      await updateJobProgress(jobId, 30, 'Running Gaussian splatting compression (stub)');
+      const compressionResult = await runCompressionAlgorithm(jobDir, mockFramePaths);
 
-    if (compressionResult.results) {
-      for (const frameResult of compressionResult.results) {
-        if (frameResult.status === 'success') {
-          await createCompressedOutput(
-            jobId,
-            frameResult.frame_index,
-            frameResult.original_size,
-            frameResult.compressed_size,
-            frameResult.gaussian_latent,
-            frameResult.metadata
-          );
+      // Step 3: Save compressed outputs to database
+      await updateJobProgress(jobId, 70, 'Saving compressed outputs');
+
+      if (compressionResult.results) {
+        for (const frameResult of compressionResult.results) {
+          if (frameResult.status === 'success') {
+            await createCompressedOutput(
+              jobId,
+              frameResult.frame_index,
+              frameResult.original_size,
+              frameResult.compressed_size,
+              frameResult.gaussian_latent,
+              frameResult.metadata
+            );
+          }
+        }
+      }
+
+      // Update dataset with mock frame count
+      await updateDataset(datasetId, {
+        total_frames: mockFramePaths.length
+      });
+    } else {
+      // If we had real frames, process them
+      await updateJobProgress(jobId, 30, 'Running Gaussian splatting compression (stub)');
+      const compressionResult = await runCompressionAlgorithm(jobDir, frames);
+
+      await updateJobProgress(jobId, 70, 'Saving compressed outputs');
+
+      if (compressionResult.results) {
+        for (const frameResult of compressionResult.results) {
+          if (frameResult.status === 'success') {
+            await createCompressedOutput(
+              jobId,
+              frameResult.frame_index,
+              frameResult.original_size,
+              frameResult.compressed_size,
+              frameResult.gaussian_latent,
+              frameResult.metadata
+            );
+          }
         }
       }
     }
 
     // Step 4: Complete job
-    await updateJobStatus(jobId, 'completed', 100, 'Compression completed');
-    console.log(`Job ${jobId} completed successfully`);
+    await updateJobStatus(
+      jobId,
+      'completed',
+      100,
+      'Compression completed (stub mode - waiting for Phase 2 external compute)'
+    );
+    console.log(`[STUB] Job ${jobId} completed successfully`);
   } catch (error) {
-    console.error(`Job ${jobId} failed:`, error);
+    console.error(`[STUB] Job ${jobId} failed:`, error);
     await updateJobStatus(
       jobId,
       'failed',

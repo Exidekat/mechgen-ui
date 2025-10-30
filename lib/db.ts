@@ -1,6 +1,15 @@
 import { neon } from '@neondatabase/serverless';
 
-const sql = neon(process.env.DATABASE_URL || process.env.POSTGRES_URL || '');
+// Validate database URL exists
+const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+if (!databaseUrl) {
+  throw new Error(
+    'Missing DATABASE_URL or POSTGRES_URL environment variable. ' +
+    'Please set one in your .env file or Vercel environment variables.'
+  );
+}
+
+const sql = neon(databaseUrl);
 
 // ============ Types ============
 
