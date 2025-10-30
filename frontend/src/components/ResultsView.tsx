@@ -190,6 +190,15 @@ export default function ResultsView({ jobId }: ResultsViewProps) {
 
         {/* Actions */}
         <div className="mt-8 flex gap-4">
+          {data.outputs.length > 0 && (
+            <a
+              href={`/api/outputs/${jobId}/download`}
+              download={`compressed-dataset-${jobId}.json`}
+              className="px-6 py-3 bg-green-600 text-white rounded-md font-medium hover:bg-green-700 transition"
+            >
+              Download Compressed Dataset
+            </a>
+          )}
           <a
             href="/"
             className="px-6 py-3 bg-blue-600 text-white rounded-md font-medium hover:bg-blue-700 transition"

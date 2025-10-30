@@ -1,0 +1,3 @@
+[submodule "algo/image-gs"]
+	path = algo/image-gs
+	url = https://github.com/NYU-ICL/image-gs.git
