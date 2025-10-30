@@ -4,8 +4,8 @@ import {
   createDataset,
   getDatasetByHuggingfaceId,
   createJob
-} from '../../lib/db';
-import { processDataset } from '../../lib/processor';
+} from '../../lib/db.js';
+import { processDataset } from '../../lib/processor.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS

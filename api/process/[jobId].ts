@@ -8,8 +8,8 @@ import {
   updateJobProgress,
   updateDataset,
   createCompressedOutput
-} from '../../lib/db';
-import { downloadDatasetFrames } from '../../lib/huggingface';
+} from '../../lib/db.js';
+import { downloadDatasetFrames } from '../../lib/huggingface.js';
 
 /**
  * Process a dataset compression job

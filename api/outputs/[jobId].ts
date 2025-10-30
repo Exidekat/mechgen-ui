@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getOutputsByJobId, getCompressionStats } from '../../lib/db';
+import { getOutputsByJobId, getCompressionStats } from '../../lib/db.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
