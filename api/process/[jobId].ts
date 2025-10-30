@@ -10,6 +10,7 @@ import {
   createCompressedOutput
 } from '../../lib/db.js';
 import { downloadDatasetFrames } from '../../lib/huggingface.js';
+import { ensureDatabase } from '../../lib/db-init.js';
 
 /**
  * Process a dataset compression job
@@ -48,6 +49,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    // Ensure database tables exist
+    await ensureDatabase();
+
     // Get job details
     const job = await getJobById(jobIdNum);
 

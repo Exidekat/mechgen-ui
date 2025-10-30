@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getJobById } from '../../lib/db.js';
+import { ensureDatabase } from '../../lib/db-init.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
@@ -12,6 +13,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    // Ensure database tables exist
+    await ensureDatabase();
+
     if (req.method === 'GET') {
       const { id } = req.query;
 

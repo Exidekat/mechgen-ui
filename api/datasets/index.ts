@@ -6,6 +6,7 @@ import {
   createJob
 } from '../../lib/db.js';
 import { processDataset } from '../../lib/processor.js';
+import { ensureDatabase } from '../../lib/db-init.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
@@ -18,6 +19,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    // Ensure database tables exist
+    await ensureDatabase();
+
     if (req.method === 'GET') {
       // List all datasets
       const datasets = await getAllDatasets();
