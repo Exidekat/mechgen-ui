@@ -60,10 +60,11 @@ export async function downloadDatasetFrames(
           type: 'dataset',
           name: huggingfaceId
         },
+        recursive: true, // Search all subdirectories
         // Optional: add credentials if needed
         // credentials: { accessToken: process.env.HUGGINGFACE_TOKEN }
       });
-      console.log(`[HF-DOWNLOAD] File list iterator created successfully`);
+      console.log(`[HF-DOWNLOAD] File list iterator created successfully (recursive mode)`);
     } catch (listError) {
       console.error(`[HF-DOWNLOAD] Failed to create file list:`, listError);
       throw new Error(
@@ -104,7 +105,7 @@ export async function downloadDatasetFrames(
             const ext = file.path.toLowerCase().slice(file.path.lastIndexOf('.'));
             if (validExtensions.includes(ext)) {
               mediaFiles.push(file);
-              console.log(`[HF-DOWNLOAD] Found media file ${mediaFiles.length}/${maxFrames}: ${file.path}`);
+              console.log(`[HF-DOWNLOAD] Found media file ${mediaFiles.length}/${maxFrames}: ${file.path} (${ext})`);
             }
 
             // Limit the number of files to process (for MVP)
@@ -238,7 +239,8 @@ export async function getDatasetInfo(huggingfaceId: string): Promise<{
       repo: {
         type: 'dataset',
         name: huggingfaceId
-      }
+      },
+      recursive: true
     });
 
     let fileCount = 0;
