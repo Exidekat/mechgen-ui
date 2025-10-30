@@ -5,7 +5,6 @@ import {
   getDatasetByHuggingfaceId,
   createJob
 } from '../../lib/db.js';
-import { processDataset } from '../../lib/processor.js';
 import { ensureDatabase } from '../../lib/db-init.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -56,16 +55,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Create new processing job
       const job = await createJob(dataset.id);
 
-      // Start async processing (non-blocking)
-      // Note: This runs in the background and may timeout on Vercel (10-50s limit)
-      // For production, consider using a dedicated compute service
-      processDataset(job.id, dataset.id, huggingface_id).catch((error) => {
-        console.error(`Background processing error for job ${job.id}:`, error);
-      });
-
       // Return job immediately
+      // Note: Frontend will trigger /api/process/[jobId] to start processing
+      // This two-step pattern is required because Vercel terminates serverless
+      // functions immediately after sending HTTP response
       return res.status(201).json({
-        message: 'Dataset processing started',
+        message: 'Job created - trigger /api/process/:jobId to start processing',
         dataset,
         job
       });

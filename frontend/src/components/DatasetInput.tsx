@@ -40,6 +40,15 @@ export default function DatasetInput({ onSubmitSuccess, onSubmitError }: Dataset
         throw new Error(data.error || 'Failed to submit dataset');
       }
 
+      // Trigger processing endpoint (fire-and-forget from client side)
+      // Don't wait for response - let it process in background while user sees polling UI
+      fetch(`/api/process/${data.job.id}`, {
+        method: 'POST',
+      }).catch((processError) => {
+        console.error('Failed to trigger processing:', processError);
+        // Don't block user flow - they'll see error in job status page
+      });
+
       // Success - call callback with job ID
       if (onSubmitSuccess) {
         onSubmitSuccess(data.job.id, data.dataset.id);

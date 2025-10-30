@@ -68,18 +68,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log(`[PROCESS] Starting job ${jobIdNum} for dataset ${huggingfaceId}`);
 
-    // Start processing - return immediately, continue in background
-    // Note: We still have timeout limits, but we'll process what we can
-    res.status(202).json({
-      message: 'Processing started',
-      jobId: jobIdNum,
-      status: 'processing'
-    });
+    // Process synchronously - Vercel keeps function alive while awaiting
+    // This is required because Vercel terminates execution after HTTP response
+    try {
+      await processJobInBackground(jobIdNum, dataset.id, huggingfaceId);
 
-    // Continue processing in background (within timeout limits)
-    processJobInBackground(jobIdNum, dataset.id, huggingfaceId).catch((error) => {
-      console.error(`[PROCESS] Job ${jobIdNum} failed:`, error);
-    });
+      return res.status(200).json({
+        message: 'Processing completed',
+        jobId: jobIdNum,
+        status: 'completed'
+      });
+    } catch (processingError) {
+      console.error(`[PROCESS] Job ${jobIdNum} failed during processing:`, processingError);
+
+      return res.status(200).json({
+        message: 'Processing failed',
+        jobId: jobIdNum,
+        status: 'failed',
+        error: processingError instanceof Error ? processingError.message : 'Unknown error'
+      });
+    }
 
   } catch (error) {
     console.error('[PROCESS] Error:', error);
