@@ -2,6 +2,18 @@ import { listFiles, downloadFile } from '@huggingface/hub';
 import { writeFile } from 'fs/promises';
 import { join } from 'path';
 
+/**
+ * Timeout utility - wraps a promise with a timeout
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operationName: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Operation "${operationName}" timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
+}
+
 export interface HuggingFaceFrame {
   path: string;
   index: number;
@@ -33,15 +45,33 @@ export async function downloadDatasetFrames(
   outputDir: string,
   maxFrames: number = 50
 ): Promise<HuggingFaceDataset> {
-  console.log(`Downloading dataset from HuggingFace: ${huggingfaceId}`);
+  console.log(`[HF-DOWNLOAD] Starting download for: ${huggingfaceId}`);
+  console.log(`[HF-DOWNLOAD] Output directory: ${outputDir}`);
+  console.log(`[HF-DOWNLOAD] Max frames: ${maxFrames}`);
 
   try {
     // List all files in the repository
-    const fileList = listFiles({
-      repo: huggingfaceId,
-      // Optional: add credentials if needed
-      // credentials: { accessToken: process.env.HUGGINGFACE_TOKEN }
-    });
+    console.log(`[HF-DOWNLOAD] Creating file list iterator`);
+
+    let fileList;
+    try {
+      fileList = listFiles({
+        repo: {
+          type: 'dataset',
+          name: huggingfaceId
+        },
+        // Optional: add credentials if needed
+        // credentials: { accessToken: process.env.HUGGINGFACE_TOKEN }
+      });
+      console.log(`[HF-DOWNLOAD] File list iterator created successfully`);
+    } catch (listError) {
+      console.error(`[HF-DOWNLOAD] Failed to create file list:`, listError);
+      throw new Error(
+        `Cannot access HuggingFace dataset "${huggingfaceId}". ` +
+        `Error: ${listError instanceof Error ? listError.message : 'Unknown error'}. ` +
+        `Make sure the dataset exists and is public, or provide HUGGINGFACE_TOKEN in environment variables.`
+      );
+    }
 
     // Filter for image and video files
     const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
@@ -50,20 +80,55 @@ export async function downloadDatasetFrames(
 
     const mediaFiles: Array<{ path: string; oid: string }> = [];
 
-    for await (const file of fileList) {
-      const ext = file.path.toLowerCase().slice(file.path.lastIndexOf('.'));
-      if (validExtensions.includes(ext)) {
-        mediaFiles.push(file);
-      }
+    console.log(`[HF-DOWNLOAD] Starting file enumeration (max: ${maxFrames} frames)`);
+    let fileCount = 0;
 
-      // Limit the number of files to process (for MVP)
-      if (mediaFiles.length >= maxFrames) {
-        console.log(`Reached max frames limit (${maxFrames}), stopping file enumeration`);
-        break;
-      }
+    // Wrap enumeration in timeout (20 seconds for listing files)
+    const enumerationTimeout = 20000;
+    console.log(`[HF-DOWNLOAD] Enumeration timeout set to ${enumerationTimeout}ms`);
+
+    try {
+      await withTimeout(
+        (async () => {
+          for await (const file of fileList) {
+            fileCount++;
+
+            if (fileCount === 1) {
+              console.log(`[HF-DOWNLOAD] First file found: ${file.path}`);
+            }
+
+            if (fileCount % 100 === 0) {
+              console.log(`[HF-DOWNLOAD] Enumerated ${fileCount} files, found ${mediaFiles.length} media files so far`);
+            }
+
+            const ext = file.path.toLowerCase().slice(file.path.lastIndexOf('.'));
+            if (validExtensions.includes(ext)) {
+              mediaFiles.push(file);
+              console.log(`[HF-DOWNLOAD] Found media file ${mediaFiles.length}/${maxFrames}: ${file.path}`);
+            }
+
+            // Limit the number of files to process (for MVP)
+            if (mediaFiles.length >= maxFrames) {
+              console.log(`[HF-DOWNLOAD] Reached max frames limit (${maxFrames}), stopping enumeration`);
+              break;
+            }
+
+            // Safety limit: stop after checking 1000 files total
+            if (fileCount >= 1000) {
+              console.log(`[HF-DOWNLOAD] Reached safety limit (1000 files checked), stopping`);
+              break;
+            }
+          }
+        })(),
+        enumerationTimeout,
+        'HuggingFace file enumeration'
+      );
+    } catch (iteratorError) {
+      console.error(`[HF-DOWNLOAD] Error during file enumeration:`, iteratorError);
+      throw new Error(`Failed to list files in repository: ${iteratorError instanceof Error ? iteratorError.message : 'Unknown error'}`);
     }
 
-    console.log(`Found ${mediaFiles.length} media files in dataset ${huggingfaceId}`);
+    console.log(`[HF-DOWNLOAD] Enumeration complete: Found ${mediaFiles.length} media files out of ${fileCount} total files`);
 
     if (mediaFiles.length === 0) {
       return {
@@ -85,23 +150,37 @@ export async function downloadDatasetFrames(
       const filename = file.path.split('/').pop() || `frame_${i}`;
       const localPath = join(outputDir, filename);
 
-      console.log(`Downloading file ${i + 1}/${mediaFiles.length}: ${file.path}`);
-
       try {
-        // Download file from HuggingFace
-        const response = await downloadFile({
-          repo: huggingfaceId,
-          path: file.path
-        });
+        // Download file from HuggingFace with timeout (10 seconds per file)
+        console.log(`[HF-DOWNLOAD] Downloading file ${i + 1}/${mediaFiles.length}: ${file.path}`);
+
+        const response = await withTimeout(
+          downloadFile({
+            repo: {
+              type: 'dataset',
+              name: huggingfaceId
+            },
+            path: file.path
+          }),
+          10000,
+          `Download file ${file.path}`
+        );
 
         if (!response) {
-          console.warn(`Failed to download file: ${file.path}`);
+          console.warn(`[HF-DOWNLOAD] Failed to download file (no response): ${file.path}`);
           continue;
         }
 
         // Save to local filesystem
+        console.log(`[HF-DOWNLOAD] Converting to buffer: ${filename}`);
         const buffer = Buffer.from(await response.arrayBuffer());
-        await writeFile(localPath, buffer);
+
+        console.log(`[HF-DOWNLOAD] Writing to disk: ${localPath}`);
+        await withTimeout(
+          writeFile(localPath, buffer),
+          5000,
+          `Write file ${filename}`
+        );
 
         frames.push({
           path: localPath,
@@ -109,9 +188,14 @@ export async function downloadDatasetFrames(
           filename: filename
         });
 
-        console.log(`Downloaded: ${filename} (${buffer.length} bytes)`);
+        console.log(`[HF-DOWNLOAD] Downloaded: ${filename} (${buffer.length} bytes)`);
       } catch (downloadError) {
-        console.error(`Error downloading ${file.path}:`, downloadError);
+        console.error(`[HF-DOWNLOAD] Error downloading ${file.path}:`, downloadError);
+        console.error(`[HF-DOWNLOAD] Error type: ${downloadError instanceof Error ? downloadError.constructor.name : typeof downloadError}`);
+        if (downloadError instanceof Error) {
+          console.error(`[HF-DOWNLOAD] Error message: ${downloadError.message}`);
+          console.error(`[HF-DOWNLOAD] Error stack: ${downloadError.stack}`);
+        }
         // Continue with next file
       }
     }
@@ -151,7 +235,10 @@ export async function getDatasetInfo(huggingfaceId: string): Promise<{
 }> {
   try {
     const fileList = listFiles({
-      repo: huggingfaceId
+      repo: {
+        type: 'dataset',
+        name: huggingfaceId
+      }
     });
 
     let fileCount = 0;
