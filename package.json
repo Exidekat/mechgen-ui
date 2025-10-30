@@ -11,6 +11,7 @@
     "migrate": "node scripts/migrate.js"
   },
   "dependencies": {
+    "@huggingface/hub": "^2.6.12",
     "@neondatabase/serverless": "^0.10.4",
     "@radix-ui/react-slot": "^1.2.0",
     "@vercel/node": "^5.1.7",

@@ -1,191 +1,74 @@
-import { mkdir } from 'fs/promises';
-import { join } from 'path';
-import { tmpdir } from 'os';
-import {
-  updateJobStatus,
-  updateJobProgress,
-  updateDataset,
-  createCompressedOutput
-} from './db';
-
 /**
- * Download frames from HuggingFace dataset
- * This is a placeholder - implement actual HuggingFace Hub API integration
- */
-async function downloadDatasetFrames(
-  huggingfaceId: string,
-  _outputDir: string
-): Promise<{ frames: string[]; totalFrames: number; metadata: any }> {
-  // TODO: Implement actual HuggingFace Hub API integration
-  // For now, return empty/mock data
-
-  console.log(`[STUB] Downloading dataset: ${huggingfaceId}`);
-
-  // Placeholder: In real implementation, use @huggingface/hub or REST API
-  // to fetch dataset files and metadata
-
-  return {
-    frames: [], // Array of file paths
-    totalFrames: 0,
-    metadata: {
-      huggingface_id: huggingfaceId,
-      note: 'Placeholder - no actual download performed'
-    }
-  };
-}
-
-/**
- * STUB: Mock compression algorithm
- * This replaces the Python subprocess version that doesn't work in Vercel
+ * Dataset Processing Module
  *
- * TODO Phase 2: Replace with external compute service (Modal/Railway)
+ * This module triggers background processing for compression jobs.
+ * The actual processing happens in /api/process/[jobId].ts to avoid
+ * blocking the main API response.
+ *
+ * Architecture:
+ * 1. User submits dataset → POST /api/datasets
+ * 2. Job created → processDataset() called
+ * 3. Triggers POST /api/process/:jobId (async, non-blocking)
+ * 4. Frontend polls GET /api/jobs/:jobId for status
+ * 5. Processing endpoint downloads HuggingFace data & compresses
+ * 6. Results stored in database
  */
-async function runCompressionAlgorithm(
-  _framesDir: string,
-  framePaths: string[]
-): Promise<any> {
-  console.log(`[STUB] Compressing ${framePaths.length} frames (mock)`);
-
-  // Simulate processing delay
-  await new Promise(resolve => setTimeout(resolve, 1000));
-
-  // Return mock compression results
-  const results = framePaths.map((_path, index) => ({
-    frame_index: index,
-    status: 'success',
-    original_size: 100000 + Math.floor(Math.random() * 50000), // Mock size
-    compressed_size: 10000 + Math.floor(Math.random() * 5000), // Mock compressed size
-    compression_ratio: 10.0,
-    gaussian_latent: null, // No actual compression in stub
-    metadata: {
-      algorithm: 'stub_placeholder',
-      version: '0.1.0',
-      note: 'This is a stub - no actual compression performed. Waiting for Phase 2 external compute service.'
-    }
-  }));
-
-  return {
-    status: 'completed',
-    total_frames: framePaths.length,
-    results,
-    metadata: {
-      algorithm: 'gaussian_splatting_stub',
-      version: '0.1.0',
-      note: 'Stub implementation - replace with external compute service'
-    }
-  };
-}
 
 /**
- * Main processing function for dataset compression
- * This runs asynchronously after job creation
+ * Trigger background processing for a dataset compression job
  *
- * CURRENT: Stub implementation for Vercel compatibility
- * TODO Phase 2: Move to external compute service (Modal/Railway)
+ * This function triggers the processing endpoint and returns immediately.
+ * The actual work happens asynchronously in the processing endpoint.
+ *
+ * @param jobId - Processing job ID
+ * @param datasetId - Dataset ID (unused in trigger, but kept for compatibility)
+ * @param huggingfaceId - HuggingFace dataset identifier (unused in trigger)
  */
 export async function processDataset(
   jobId: number,
-  datasetId: number,
-  huggingfaceId: string
+  _datasetId: number,
+  _huggingfaceId: string
 ): Promise<void> {
   try {
-    console.log(`[STUB] Starting processing for job ${jobId}, dataset ${datasetId}`);
+    console.log(`[PROCESSOR] Triggering processing for job ${jobId}`);
 
-    // Update job to processing status
-    await updateJobStatus(jobId, 'processing', 0, 'Initializing (stub mode)');
+    // Determine the API base URL
+    // In production: use the same host
+    // In development: call the processing endpoint
+    const apiBase = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : process.env.API_BASE || 'http://localhost:3000';
 
-    // Create temporary directory for this job
-    const jobDir = join(tmpdir(), `mechgen-job-${jobId}`);
-    await mkdir(jobDir, { recursive: true });
+    const processingUrl = `${apiBase}/api/process/${jobId}`;
 
-    // Step 1: Download dataset from HuggingFace (stub)
-    await updateJobProgress(jobId, 10, 'Downloading dataset from HuggingFace (stub)');
-    const { frames, totalFrames, metadata } = await downloadDatasetFrames(
-      huggingfaceId,
-      jobDir
-    );
+    console.log(`[PROCESSOR] Calling processing endpoint: ${processingUrl}`);
 
-    // Update dataset with metadata
-    await updateDataset(datasetId, {
-      total_frames: totalFrames,
-      metadata
+    // Trigger the processing endpoint (fire and forget)
+    const response = await fetch(processingUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
 
-    if (frames.length === 0) {
-      // No frames to process - create mock data for testing
-      console.log(`[STUB] No frames downloaded, creating mock compression data for job ${jobId}`);
-
-      // Create 3 mock frames for demonstration
-      const mockFramePaths = [
-        '/tmp/mock_frame_0.jpg',
-        '/tmp/mock_frame_1.jpg',
-        '/tmp/mock_frame_2.jpg'
-      ];
-
-      await updateJobProgress(jobId, 30, 'Running Gaussian splatting compression (stub)');
-      const compressionResult = await runCompressionAlgorithm(jobDir, mockFramePaths);
-
-      // Step 3: Save compressed outputs to database
-      await updateJobProgress(jobId, 70, 'Saving compressed outputs');
-
-      if (compressionResult.results) {
-        for (const frameResult of compressionResult.results) {
-          if (frameResult.status === 'success') {
-            await createCompressedOutput(
-              jobId,
-              frameResult.frame_index,
-              frameResult.original_size,
-              frameResult.compressed_size,
-              frameResult.gaussian_latent,
-              frameResult.metadata
-            );
-          }
-        }
-      }
-
-      // Update dataset with mock frame count
-      await updateDataset(datasetId, {
-        total_frames: mockFramePaths.length
-      });
-    } else {
-      // If we had real frames, process them
-      await updateJobProgress(jobId, 30, 'Running Gaussian splatting compression (stub)');
-      const compressionResult = await runCompressionAlgorithm(jobDir, frames);
-
-      await updateJobProgress(jobId, 70, 'Saving compressed outputs');
-
-      if (compressionResult.results) {
-        for (const frameResult of compressionResult.results) {
-          if (frameResult.status === 'success') {
-            await createCompressedOutput(
-              jobId,
-              frameResult.frame_index,
-              frameResult.original_size,
-              frameResult.compressed_size,
-              frameResult.gaussian_latent,
-              frameResult.metadata
-            );
-          }
-        }
-      }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(
+        `Processing endpoint returned ${response.status}: ${errorData.error || response.statusText}`
+      );
     }
 
-    // Step 4: Complete job
-    await updateJobStatus(
-      jobId,
-      'completed',
-      100,
-      'Compression completed (stub mode - waiting for Phase 2 external compute)'
-    );
-    console.log(`[STUB] Job ${jobId} completed successfully`);
+    const result = await response.json();
+    console.log(`[PROCESSOR] Processing triggered successfully:`, result);
+
   } catch (error) {
-    console.error(`[STUB] Job ${jobId} failed:`, error);
-    await updateJobStatus(
-      jobId,
-      'failed',
-      undefined,
-      undefined,
-      error instanceof Error ? error.message : 'Unknown error'
+    console.error(`[PROCESSOR] Failed to trigger processing for job ${jobId}:`, error);
+
+    // Don't throw - just log the error
+    // The job will remain in 'pending' state and can be retried
+    console.error(
+      `[PROCESSOR] Job ${jobId} processing failed to start. ` +
+      `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
   }
 }
