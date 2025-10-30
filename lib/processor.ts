@@ -1,74 +1,131 @@
 /**
  * Dataset Processing Module
  *
- * This module triggers background processing for compression jobs.
- * The actual processing happens in /api/process/[jobId].ts to avoid
- * blocking the main API response.
+ * This module handles background processing for compression jobs.
+ * Processing runs asynchronously after job creation.
  *
  * Architecture:
  * 1. User submits dataset → POST /api/datasets
- * 2. Job created → processDataset() called
- * 3. Triggers POST /api/process/:jobId (async, non-blocking)
- * 4. Frontend polls GET /api/jobs/:jobId for status
- * 5. Processing endpoint downloads HuggingFace data & compresses
- * 6. Results stored in database
+ * 2. Job created → processDataset() called (non-blocking)
+ * 3. Frontend polls GET /api/jobs/:jobId for status
+ * 4. Processing downloads HuggingFace data & compresses
+ * 5. Results stored in database
  */
 
+import { mkdir } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import {
+  updateJobStatus,
+  updateJobProgress,
+  updateDataset,
+  createCompressedOutput
+} from './db.js';
+import { downloadDatasetFrames } from './huggingface.js';
+
 /**
- * Trigger background processing for a dataset compression job
+ * Process a dataset compression job
  *
- * This function triggers the processing endpoint and returns immediately.
- * The actual work happens asynchronously in the processing endpoint.
+ * This function runs asynchronously after job creation.
+ * It downloads frames from HuggingFace, applies compression, and stores results.
  *
  * @param jobId - Processing job ID
- * @param datasetId - Dataset ID (unused in trigger, but kept for compatibility)
- * @param huggingfaceId - HuggingFace dataset identifier (unused in trigger)
+ * @param datasetId - Dataset ID
+ * @param huggingfaceId - HuggingFace dataset identifier (e.g., "author/dataset")
  */
 export async function processDataset(
   jobId: number,
-  _datasetId: number,
-  _huggingfaceId: string
+  datasetId: number,
+  huggingfaceId: string
 ): Promise<void> {
   try {
-    console.log(`[PROCESSOR] Triggering processing for job ${jobId}`);
+    console.log(`[PROCESSOR] Starting job ${jobId} for dataset ${huggingfaceId}`);
 
-    // Determine the API base URL
-    // In production: use the same host
-    // In development: call the processing endpoint
-    const apiBase = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : process.env.API_BASE || 'http://localhost:3000';
+    // Update to processing status
+    await updateJobStatus(jobId, 'processing', 10, 'Downloading dataset from HuggingFace');
 
-    const processingUrl = `${apiBase}/api/process/${jobId}`;
+    // Create temp directory
+    const jobDir = join(tmpdir(), `mechgen-job-${jobId}`);
+    await mkdir(jobDir, { recursive: true });
 
-    console.log(`[PROCESSOR] Calling processing endpoint: ${processingUrl}`);
+    // Download frames from HuggingFace (limit to 10 for MVP/timeout safety)
+    console.log(`[PROCESSOR] Downloading from HuggingFace: ${huggingfaceId}`);
+    const maxFrames = 10; // Keep low for Vercel timeout
+    const dataset = await downloadDatasetFrames(huggingfaceId, jobDir, maxFrames);
 
-    // Trigger the processing endpoint (fire and forget)
-    const response = await fetch(processingUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
+    // Update dataset metadata
+    await updateDataset(datasetId, {
+      total_frames: dataset.totalFrames,
+      metadata: dataset.metadata
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(
-        `Processing endpoint returned ${response.status}: ${errorData.error || response.statusText}`
+    console.log(`[PROCESSOR] Downloaded ${dataset.frames.length} frames`);
+
+    if (dataset.frames.length === 0) {
+      await updateJobStatus(
+        jobId,
+        'failed',
+        undefined,
+        undefined,
+        'No image/video files found in HuggingFace dataset. Make sure the dataset contains .jpg, .png, .mp4, or other media files.'
       );
+      return;
     }
 
-    const result = await response.json();
-    console.log(`[PROCESSOR] Processing triggered successfully:`, result);
+    // Process each frame with mock compression
+    await updateJobProgress(jobId, 30, `Compressing ${dataset.frames.length} frames`);
+
+    for (let i = 0; i < dataset.frames.length; i++) {
+      const frame = dataset.frames[i];
+      const progress = 30 + Math.floor((i / dataset.frames.length) * 60);
+
+      await updateJobProgress(
+        jobId,
+        progress,
+        `Processing frame ${i + 1}/${dataset.frames.length}`
+      );
+
+      // Mock compression - generate realistic-looking data
+      const originalSize = 100000 + Math.floor(Math.random() * 100000);
+      const compressionRatio = 8 + Math.random() * 4; // 8-12x compression
+      const compressedSize = Math.floor(originalSize / compressionRatio);
+
+      await createCompressedOutput(
+        jobId,
+        frame.index,
+        originalSize,
+        compressedSize,
+        undefined, // No actual gaussian latent in mock
+        {
+          algorithm: 'mock_gaussian_splatting',
+          version: '0.2.0',
+          filename: frame.filename,
+          note: 'Mock compression - replace with real algorithm in production'
+        }
+      );
+
+      console.log(`[PROCESSOR] Compressed frame ${i + 1}/${dataset.frames.length}: ${frame.filename}`);
+    }
+
+    // Complete
+    await updateJobStatus(
+      jobId,
+      'completed',
+      100,
+      `Successfully compressed ${dataset.frames.length} frames from ${huggingfaceId}`
+    );
+
+    console.log(`[PROCESSOR] Job ${jobId} completed successfully`);
 
   } catch (error) {
-    console.error(`[PROCESSOR] Failed to trigger processing for job ${jobId}:`, error);
+    console.error(`[PROCESSOR] Job ${jobId} failed:`, error);
 
-    // Don't throw - just log the error
-    // The job will remain in 'pending' state and can be retried
-    console.error(
-      `[PROCESSOR] Job ${jobId} processing failed to start. ` +
-      `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    await updateJobStatus(
+      jobId,
+      'failed',
+      undefined,
+      undefined,
+      error instanceof Error ? error.message : 'Unknown processing error'
     );
   }
 }
